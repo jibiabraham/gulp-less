@@ -7,6 +7,41 @@ var defaults = require('lodash.defaults');
 var convert = require('convert-source-map');
 var applySourceMap = require('vinyl-sourcemaps-apply');
 
+less.render = function (input, options, callback) {
+  options = options || {};
+
+  if (typeof(options) === 'function') {
+      callback = options;
+      options = {};
+  }
+
+  var parser = new(less.Parser)(options),
+      ee;
+
+  if (callback) {
+      parser.parse(input, function (e, root) {
+          if (e) { callback(e); return; }
+          var css;
+          try {
+              css = root && root.toCSS && root.toCSS(options);
+          }
+          catch (err) { callback(err); return; }
+          callback(null, css);
+      }, options);
+  } else {
+      ee = new (require('events').EventEmitter)();
+
+      process.nextTick(function () {
+          parser.parse(input, function (e, root) {
+              if (e) { return ee.emit('error', e); }
+              try { ee.emit('success', root.toCSS(options)); }
+              catch (err) { ee.emit('error', err); }
+          }, options);
+      });
+      return ee;
+  }
+};
+
 module.exports = function (options) {
   // Mixes in default options.
   options = defaults(options || {}, {
@@ -37,12 +72,6 @@ module.exports = function (options) {
     // Enables source maps if gulp-sourcemaps has been initted
     if (file.sourceMap) {
       opts.sourceMap = true;
-    }
-
-    var modifyVarsOutput = parseVariableOptions(opts.modifyVars);
-    if (modifyVarsOutput) {
-      str += '\n';
-      str += modifyVarsOutput;
     }
 
     less.render(str, opts, function (err, css) {
@@ -76,14 +105,6 @@ module.exports = function (options) {
       }
     });
 
-    function parseVariableOptions(options) {
-      var output = '';
-      options = options || {};
-      for (var key in options) {
-          output += '@' + key + ':\'' + options[key] + '\';';
-      }
-      return output;
-    }
   });
 };
 

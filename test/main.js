@@ -125,7 +125,7 @@ describe('gulp-less', function () {
       var file = createVinyl("modifyvars.less");
       var options = {
         modifyVars: {
-          "static-prefix": "https://assets-cdn.github.com"
+          "static-prefix": '"https://assets-cdn.github.com"'
         }
       }
       var stream = less(options);
