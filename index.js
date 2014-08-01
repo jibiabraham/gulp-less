@@ -7,47 +7,41 @@ var defaults = require('lodash.defaults');
 var convert = require('convert-source-map');
 var applySourceMap = require('vinyl-sourcemaps-apply');
 
-less.render = function (input, options, callback) {
-  options = options || {};
-
-  if (typeof(options) === 'function') {
-      callback = options;
-      options = {};
-  }
-
-  var parser = new(less.Parser)(options),
-      ee;
-
-  if (callback) {
-      parser.parse(input, function (e, root) {
-          if (e) { callback(e); return; }
-          var css;
-          try {
-              css = root && root.toCSS && root.toCSS(options);
-          }
-          catch (err) { callback(err); return; }
-          callback(null, css);
-      }, options);
-  } else {
-      ee = new (require('events').EventEmitter)();
-
-      process.nextTick(function () {
-          parser.parse(input, function (e, root) {
-              if (e) { return ee.emit('error', e); }
-              try { ee.emit('success', root.toCSS(options)); }
-              catch (err) { ee.emit('error', err); }
-          }, options);
-      });
-      return ee;
-  }
-};
-
 module.exports = function (options) {
   // Mixes in default options.
   options = defaults(options || {}, {
     compress: false,
     paths: []
   });
+
+  // Internal render method to account for less bug #1921
+  // https://github.com/less/less.js/pull/1921
+  var render = function(input, options, callback){
+    options = options || {};
+
+    if (typeof options === 'function') {
+        callback = options;
+        options = {};
+    }
+
+    var parser = new less.Parser(options);
+    parser.parse(input, function (e, root) {
+      if (e) { 
+        return callback(e);
+      }
+
+      // The rendered CSS string
+      var css;
+      try {
+        css = root && root.toCSS && root.toCSS(options);
+      }
+      catch (err) { 
+        return callback(err);
+      }
+
+      callback(null, css);
+    }, options);
+  };
 
   return through2.obj(function(file, enc, cb) {
 
@@ -74,7 +68,8 @@ module.exports = function (options) {
       opts.sourceMap = true;
     }
 
-    less.render(str, opts, function (err, css) {
+    // Use internal render method that creates a new less.Parser
+    render(str, opts, function (err, css) {
       if (err) {
 
         // Convert the keys so PluginError can read them
@@ -104,7 +99,6 @@ module.exports = function (options) {
         cb(null, file);
       }
     });
-
   });
 };
 
